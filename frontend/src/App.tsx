@@ -105,18 +105,43 @@ function App() {
 
   // Handle chat messages and AI responses
   const handleChatResponse = useCallback((response: AIResponse, inputType: 'text' | 'voice' | 'photo') => {
-  // Only update map markers if this is a text/voice query asking for recommendations
-  if (inputType === 'text' || inputType === 'voice') {
-    if (response.mapActions?.markers && response.mapActions.markers.length > 0) {
-      setMapMarkers(response.mapActions.markers);
+    console.log('handleChatResponse called:', { inputType, hasText: !!response.text, textLength: response.text?.length });
+    
+    // For photo responses, add the AI response to chat messages and switch to text interface
+    if (inputType === 'photo' && userLocation) {
+      const aiMessage: ChatMessage = {
+        id: `photo_response_${Date.now()}`,
+        type: 'assistant',
+        content: response.text,
+        timestamp: new Date(),
+        inputType: 'photo',
+        location: userLocation,
+      };
+      
+      console.log('Adding photo response to chat messages');
+      setChatMessages(prev => [...prev, aiMessage]);
+      
+      // Switch to text chat interface to show the response
+      setActiveInput('text');
+      
+      // Auto-speak the response if speech is enabled
+      if (response.text) {
+        speechService.speak(response.text);
+      }
     }
-  }
+    
+    // Only update map markers if this is a text/voice query asking for recommendations
+    if (inputType === 'text' || inputType === 'voice') {
+      if (response.mapActions?.markers && response.mapActions.markers.length > 0) {
+        setMapMarkers(response.mapActions.markers);
+      }
+    }
 
-  // Center map if AI response includes center coordinates
-  if (response.mapActions?.center) {
-    setUserLocation(response.mapActions.center);
-  }
-}, []);
+    // Center map if AI response includes center coordinates
+    if (response.mapActions?.center) {
+      setUserLocation(response.mapActions.center);
+    }
+  }, [userLocation]);
 
   // Stop voice response
   const handleStopVoice = useCallback(() => {

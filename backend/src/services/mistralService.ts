@@ -65,7 +65,9 @@ export class MistralService {
     location: Coordinates,
     nearbyPOIs: POI[]
   ): Promise<AIResponse> {
+    console.log('MistralService.analyzePhoto called');
     try {
+      console.log('Preparing system prompt...');
       const systemPrompt = `You are a knowledgeable city guide AI assistant. You can see images and identify landmarks, buildings, and locations. 
       
 Current location: ${location.lat}, ${location.lon}
@@ -77,6 +79,10 @@ Your task is to:
 4. Be conversational, informative, and helpful
 
 IMPORTANT: Do NOT provide recommendations for nearby places unless the user specifically asks for them. Focus only on analyzing what's visible in the image.`;
+
+      console.log('Making Mistral API call...');
+      console.log('Image data length:', imageBase64.length);
+      console.log('Using model: pixtral-12b-2409');
 
       const response = await this.mistral.chat.complete({
         model: 'pixtral-12b-2409',
@@ -94,10 +100,19 @@ IMPORTANT: Do NOT provide recommendations for nearby places unless the user spec
         maxTokens: 800,
       });
 
+      console.log('Mistral API call completed');
+      console.log('Response structure:', {
+        hasChoices: !!response.choices,
+        choicesLength: response.choices?.length,
+        hasContent: !!response.choices?.[0]?.message?.content
+      });
+
       const responseContent = response.choices?.[0]?.message?.content;
       const responseText = typeof responseContent === 'string' 
         ? responseContent 
         : 'I could not analyze this image. Please try again.';
+
+      console.log('Analysis result length:', responseText.length);
 
       return {
         text: responseText,
@@ -108,11 +123,14 @@ IMPORTANT: Do NOT provide recommendations for nearby places unless the user spec
         }
       };
     } catch (error) {
-      console.error('Mistral image analysis error:', error);
-      return {
-        text: 'I apologize, but I could not analyze this image. Please try again with a different photo.',
-        recommendations: [],
-      };
+      console.error('Mistral image analysis error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
+      
+      // Re-throw the error to be handled by the route
+      throw error;
     }
   }
 

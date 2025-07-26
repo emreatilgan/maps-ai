@@ -13,14 +13,28 @@ let locationService: LocationService | null = null;
 
 const getMistralService = () => {
   if (!mistralService) {
-    mistralService = new MistralService();
+    try {
+      console.log('Initializing MistralService...');
+      mistralService = new MistralService();
+      console.log('MistralService initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize MistralService:', error);
+      throw error;
+    }
   }
   return mistralService;
 };
 
 const getLocationService = () => {
   if (!locationService) {
-    locationService = new LocationService();
+    try {
+      console.log('Initializing LocationService...');
+      locationService = new LocationService();
+      console.log('LocationService initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize LocationService:', error);
+      throw error;
+    }
   }
   return locationService;
 };
@@ -118,44 +132,90 @@ router.post('/voice', async (req, res) => {
 
 // Photo-based chat endpoint
 router.post('/photo', upload.single('image'), async (req, res) => {
+  console.log('=== Photo Analysis Request Started ===');
   try {
     const { location } = req.body;
     const imageFile = req.file;
 
+    console.log('Request data:', {
+      hasLocation: !!location,
+      hasImage: !!imageFile,
+      imageSize: imageFile?.size,
+      imageMimeType: imageFile?.mimetype
+    });
+
     if (!location || !imageFile) {
+      console.error('Missing required fields:', { location: !!location, imageFile: !!imageFile });
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'Both location and image are required',
       });
     }
 
-    const locationObj = JSON.parse(location);
+    let locationObj;
+    try {
+      locationObj = JSON.parse(location);
+      console.log('Parsed location:', locationObj);
+    } catch (parseError) {
+      console.error('Failed to parse location JSON:', parseError);
+      return res.status(400).json({
+        error: 'Invalid location data',
+        message: 'Location must be valid JSON',
+      });
+    }
 
     // Convert image to base64
+    console.log('Converting image to base64...');
     const imageBase64 = imageFile.buffer.toString('base64');
+    console.log(`Image converted to base64, length: ${imageBase64.length}`);
 
     // Get location context and nearby POIs
+    console.log('Getting location context...');
     const { nearbyPOIs } = await getLocationService().enrichLocationContext(locationObj);
+    console.log(`Found ${nearbyPOIs.length} nearby POIs`);
 
     // Analyze photo with Mistral Pixtral
+    console.log('Starting Mistral image analysis...');
     const aiResponse = await getMistralService().analyzePhoto(
       imageBase64,
       locationObj,
       nearbyPOIs
     );
+    console.log('Mistral analysis completed successfully');
 
-    res.json({
+    const response = {
       id: uuidv4(),
       response: aiResponse,
       location: locationObj,
       timestamp: new Date().toISOString(),
       inputType: 'photo',
-    });
+    };
+
+    console.log('=== Photo Analysis Request Completed Successfully ===');
+    res.json(response);
   } catch (error) {
-    console.error('Photo chat error:', error);
+    console.error('=== Photo Analysis Request Failed ===');
+    console.error('Photo chat error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    });
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to process photo query';
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        errorMessage = 'AI service configuration error';
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Request timeout - please try again';
+      } else if (error.message.includes('network')) {
+        errorMessage = 'Network error - please check connection';
+      }
+    }
+
     res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to process photo query',
+      message: errorMessage,
     });
   }
 });
