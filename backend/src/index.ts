@@ -1,8 +1,7 @@
-import dotenv from 'dotenv';
+// Load environment variables FIRST, before any other imports
+import 'dotenv/config';
 
-// Load environment variables
-dotenv.config();
-
+// Only import other modules after environment variables are loaded
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
