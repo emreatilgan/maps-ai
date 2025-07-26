@@ -160,17 +160,56 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       return;
     }
 
+    console.log('=== Frontend Photo Analysis Started ===');
+    console.log('Image details:', {
+      name: selectedImage.name,
+      size: selectedImage.size,
+      type: selectedImage.type,
+      location: userLocation
+    });
+
     onLoadingChange(true);
     setError(null);
 
     try {
+      console.log('Calling chatAPI.sendPhoto...');
       const aiResponse = await chatAPI.sendPhoto(selectedImage, userLocation);
+      console.log('Photo analysis successful:', {
+        hasText: !!aiResponse.text,
+        textLength: aiResponse.text?.length,
+        hasRecommendations: !!aiResponse.recommendations?.length
+      });
+      
+      // Pass the response to parent component
       onResponse(aiResponse, 'photo');
-      onClose();
+      
+      // Note: onClose() is now handled by the parent component after adding to chat
     } catch (error) {
-      console.error('Photo analysis error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to analyze image');
+      console.error('=== Frontend Photo Analysis Failed ===');
+      console.error('Photo analysis error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
+      
+      // Set a user-friendly error message
+      let errorMessage = 'Failed to analyze image';
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. The image analysis is taking too long. Please try with a smaller image or try again later.';
+        } else if (error.message.includes('network') || error.message.includes('Network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (error.message.includes('File too large')) {
+          errorMessage = 'Image file is too large. Please use an image smaller than 10MB.';
+        } else if (error.message.includes('Server error')) {
+          errorMessage = 'Server temporarily unavailable. Please try again in a few moments.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      setError(errorMessage);
     } finally {
+      console.log('Frontend photo analysis completed, loading set to false');
       onLoadingChange(false);
     }
   };
