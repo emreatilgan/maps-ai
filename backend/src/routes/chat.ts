@@ -6,8 +6,24 @@ import { LocationService } from '../services/locationService';
 import { ChatRequest } from '@shared/types';
 
 const router = express.Router();
-const mistralService = new MistralService();
-const locationService = new LocationService();
+
+// Lazy initialization to ensure environment variables are loaded
+let mistralService: MistralService | null = null;
+let locationService: LocationService | null = null;
+
+const getMistralService = () => {
+  if (!mistralService) {
+    mistralService = new MistralService();
+  }
+  return mistralService;
+};
+
+const getLocationService = () => {
+  if (!locationService) {
+    locationService = new LocationService();
+  }
+  return locationService;
+};
 
 // Configure multer for photo uploads
 const upload = multer({
@@ -37,10 +53,10 @@ router.post('/text', async (req, res) => {
     }
 
     // Get location context and nearby POIs
-    const { nearbyPOIs } = await locationService.enrichLocationContext(location);
+    const { nearbyPOIs } = await getLocationService().enrichLocationContext(location);
 
     // Process query with Mistral
-    const aiResponse = await mistralService.processTextQuery(
+    const aiResponse = await getMistralService().processTextQuery(
       message,
       location,
       nearbyPOIs
@@ -74,10 +90,10 @@ router.post('/voice', async (req, res) => {
     }
 
     // Get location context and nearby POIs
-    const { nearbyPOIs } = await locationService.enrichLocationContext(location);
+    const { nearbyPOIs } = await getLocationService().enrichLocationContext(location);
 
     // Process query with Mistral (same as text, but may add voice-specific context)
-    const aiResponse = await mistralService.processTextQuery(
+    const aiResponse = await getMistralService().processTextQuery(
       `[Voice Query] ${message}`,
       location,
       nearbyPOIs
@@ -118,10 +134,10 @@ router.post('/photo', upload.single('image'), async (req, res) => {
     const imageBase64 = imageFile.buffer.toString('base64');
 
     // Get location context and nearby POIs
-    const { nearbyPOIs } = await locationService.enrichLocationContext(locationObj);
+    const { nearbyPOIs } = await getLocationService().enrichLocationContext(locationObj);
 
     // Analyze photo with Mistral Pixtral
-    const aiResponse = await mistralService.analyzePhoto(
+    const aiResponse = await getMistralService().analyzePhoto(
       imageBase64,
       locationObj,
       nearbyPOIs
