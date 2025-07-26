@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Coordinates, ChatRequest, AIResponse } from '@shared/types';
+import { Coordinates, ChatRequest, AIResponse, POI } from '@shared/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -72,6 +72,18 @@ export const chatAPI = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return response.data.response;
+  },
+
+  getAttractionInfo: async (poi: POI, userLocation: Coordinates): Promise<AIResponse> => {
+    const message = `Tell me about ${poi.name} (${poi.category}${poi.subcategory ? ` - ${poi.subcategory}` : ''})${poi.address ? ` located at ${poi.address}` : ''}. Provide a brief, interesting overview of this attraction.`;
+    
+    const response = await api.post('/chat/text', {
+      message,
+      location: userLocation,
+      inputType: 'text',
+      poiContext: poi, // Add POI context for more detailed information
     });
     return response.data.response;
   },

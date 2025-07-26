@@ -27,7 +27,7 @@ const upload = multer({
 // Text-based chat endpoint
 router.post('/text', async (req, res) => {
   try {
-    const { message, location } = req.body as ChatRequest;
+    const { message, location, poiContext } = req.body as ChatRequest & { poiContext?: any };
 
     if (!message || !location) {
       return res.status(400).json({
@@ -39,11 +39,12 @@ router.post('/text', async (req, res) => {
     // Get location context and nearby POIs
     const { nearbyPOIs } = await locationService.enrichLocationContext(location);
 
-    // Process query with Mistral
+    // Process query with Mistral, including POI context if available
     const aiResponse = await mistralService.processTextQuery(
       message,
       location,
-      nearbyPOIs
+      nearbyPOIs,
+      poiContext
     );
 
     res.json({

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, X, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, X, Loader2, VolumeX } from 'lucide-react';
 import { Coordinates, AIResponse } from '@shared/types';
 import { speechService } from '../../services/speech';
 import { chatAPI } from '../../services/api';
@@ -24,6 +24,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({
   const [finalTranscript, setFinalTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -32,6 +33,21 @@ const VoiceInput: React.FC<VoiceInputProps> = ({
       setIsSupported(false);
       setError('Speech recognition is not supported in this browser');
     }
+  }, []);
+
+  useEffect(() => {
+    // Monitor speech synthesis state
+    const checkSpeakingState = () => {
+      setIsSpeaking(speechService.getIsSpeaking());
+    };
+
+    // Check initially
+    checkSpeakingState();
+
+    // Set up interval to monitor speaking state
+    const interval = setInterval(checkSpeakingState, 100);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -84,6 +100,11 @@ const VoiceInput: React.FC<VoiceInputProps> = ({
   const stopListening = () => {
     speechService.stopListening();
     setIsListening(false);
+  };
+
+  const stopVoiceResponse = () => {
+    speechService.stopSpeaking();
+    setIsSpeaking(false);
   };
 
   const handleSubmit = async () => {
@@ -285,6 +306,19 @@ const VoiceInput: React.FC<VoiceInputProps> = ({
             </>
           )}
         </div>
+
+        {/* Stop Voice Response Button */}
+        {isSpeaking && (
+          <div className="mt-3">
+            <button
+              onClick={stopVoiceResponse}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors animate-pulse"
+            >
+              <VolumeX className="w-4 h-4" />
+              <span>Stop Voice Response</span>
+            </button>
+          </div>
+        )}
 
         {/* Speech Synthesis Info */}
         {speechService.isSpeechSynthesisSupported() && (

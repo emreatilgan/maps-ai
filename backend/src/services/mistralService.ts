@@ -5,7 +5,7 @@ export class MistralService {
   private mistral: Mistral;
 
   constructor() {
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = process.env.MISTRAL_API_KEY || '754eEXpDSLScl1F9BqcRd9wY1dsbwGXL';
     if (!apiKey) {
       throw new Error('MISTRAL_API_KEY environment variable is required');
     }
@@ -18,11 +18,12 @@ export class MistralService {
   async processTextQuery(
     query: string, 
     location: Coordinates, 
-    nearbyPOIs: POI[]
+    nearbyPOIs: POI[],
+    poiContext?: POI
   ): Promise<AIResponse> {
     try {
-      const systemPrompt = this.buildSystemPrompt(location, nearbyPOIs);
-      const userPrompt = this.buildUserPrompt(query, location);
+      const systemPrompt = this.buildSystemPrompt(location, nearbyPOIs, poiContext);
+      const userPrompt = this.buildUserPrompt(query, location, poiContext);
 
       const response = await this.mistral.chat.complete({
         model: 'mistral-large-latest',
@@ -34,14 +35,20 @@ export class MistralService {
         maxTokens: 1000,
       });
 
-      const responseText = response.choices?.[0]?.message?.content || 'I apologize, but I could not process your request.';
+      const responseContent = response.choices?.[0]?.message?.content;
+      const responseText = typeof responseContent === 'string' 
+        ? responseContent 
+        : 'I apologize, but I could not process your request.';
+      
+      // Check if user is asking for recommendations
+      const isAskingForRecommendations = this.isRecommendationRequest(query);
       
       return {
         text: responseText,
-        recommendations: this.extractRecommendations(responseText, nearbyPOIs),
+        recommendations: isAskingForRecommendations ? this.extractRecommendations(responseText, nearbyPOIs) : [],
         mapActions: {
           center: location,
-          markers: nearbyPOIs.slice(0, 5), // Show top 5 relevant POIs
+          markers: isAskingForRecommendations ? nearbyPOIs.slice(0, 5) : [], // Only show markers if asking for recommendations
         }
       };
     } catch (error) {
@@ -63,16 +70,13 @@ export class MistralService {
       
 Current location: ${location.lat}, ${location.lon}
       
-Nearby places of interest:
-${nearbyPOIs.map(poi => `- ${poi.name} (${poi.category}): ${poi.description || 'No description'}`).join('\n')}
-
 Your task is to:
 1. Identify what's in the image
 2. If it's a landmark or notable location, provide historical/cultural information
-3. Connect it to nearby places if relevant
-4. Provide tourist recommendations based on what you see
+3. Focus on the specific building or location in the image
+4. Be conversational, informative, and helpful
 
-Be conversational, informative, and helpful. Focus on information that would be valuable to a tourist.`;
+IMPORTANT: Do NOT provide recommendations for nearby places unless the user specifically asks for them. Focus only on analyzing what's visible in the image.`;
 
       const response = await this.mistral.chat.complete({
         model: 'pixtral-12b-2409',
@@ -81,8 +85,8 @@ Be conversational, informative, and helpful. Focus on information that would be 
           { 
             role: 'user', 
             content: [
-              { type: 'text', text: 'What can you tell me about this place? What should I know as a tourist?' },
-              { type: 'image_url', image_url: `data:image/jpeg;base64,${imageBase64}` }
+              { type: 'text', text: 'What can you tell me about this place? Focus on what you can see in the image.' },
+              { type: 'image_url', imageUrl: `data:image/jpeg;base64,${imageBase64}` }
             ]
           }
         ],
@@ -90,14 +94,17 @@ Be conversational, informative, and helpful. Focus on information that would be 
         maxTokens: 800,
       });
 
-      const responseText = response.choices?.[0]?.message?.content || 'I could not analyze this image. Please try again.';
+      const responseContent = response.choices?.[0]?.message?.content;
+      const responseText = typeof responseContent === 'string' 
+        ? responseContent 
+        : 'I could not analyze this image. Please try again.';
 
       return {
         text: responseText,
-        recommendations: nearbyPOIs.slice(0, 3),
+        recommendations: [], // No automatic recommendations for photos
         mapActions: {
           center: location,
-          markers: nearbyPOIs,
+          markers: [], // No automatic markers for photos
         }
       };
     } catch (error) {
@@ -109,7 +116,26 @@ Be conversational, informative, and helpful. Focus on information that would be 
     }
   }
 
-  private buildSystemPrompt(location: Coordinates, nearbyPOIs: POI[]): string {
+  private buildSystemPrompt(location: Coordinates, nearbyPOIs: POI[], poiContext?: POI): string {
+    let poiContextInfo = '';
+    if (poiContext) {
+      poiContextInfo = `
+
+SPECIFIC ATTRACTION CONTEXT:
+The user is asking about: ${poiContext.name}
+Category: ${poiContext.category}${poiContext.subcategory ? ` - ${poiContext.subcategory}` : ''}
+Address: ${poiContext.address || 'Not available'}
+Description: ${poiContext.description || 'No description available'}
+Tags: ${Object.entries(poiContext.tags).map(([k, v]) => `${k}=${v}`).join(', ')}
+
+When responding about this specific attraction, provide:
+- Historical background and significance
+- What makes it special or worth visiting
+- Any interesting facts or stories
+- Practical visiting information if available
+- Cultural or architectural significance`;
+    }
+
     return `You are an expert AI city guide and local tourism assistant. You have deep knowledge about cities, attractions, restaurants, culture, and history.
 
 Current user location: ${location.lat}, ${location.lon}
@@ -119,7 +145,7 @@ ${nearbyPOIs.map(poi =>
   `- ${poi.name} (${poi.category}${poi.subcategory ? ` - ${poi.subcategory}` : ''}): ${poi.description || 'No description available'}
     Address: ${poi.address || 'Not available'}
     Tags: ${Object.entries(poi.tags).map(([k, v]) => `${k}=${v}`).join(', ')}`
-).join('\n')}
+).join('\n')}${poiContextInfo}
 
 Your role:
 1. Provide helpful, accurate information about locations, attractions, and services
@@ -128,14 +154,23 @@ Your role:
 4. Be conversational and engaging
 5. Focus on information valuable to tourists and visitors
 6. When suggesting places, prioritize those from the nearby POIs list
+7. When discussing a specific attraction, provide detailed, engaging information
 
 Always be helpful, informative, and friendly. Provide specific, actionable advice.`;
   }
 
-  private buildUserPrompt(query: string, location: Coordinates): string {
+  private buildUserPrompt(query: string, location: Coordinates, poiContext?: POI): string {
+    let poiContextInfo = '';
+    if (poiContext) {
+      poiContextInfo = `
+
+The user is specifically asking about: ${poiContext.name}
+Please provide detailed, engaging information about this attraction.`;
+    }
+
     return `User question: "${query}"
 
-Current location: ${location.lat}, ${location.lon}
+Current location: ${location.lat}, ${location.lon}${poiContextInfo}
 
 Please provide a helpful response as a knowledgeable local guide. Include specific recommendations when relevant.`;
   }
@@ -157,5 +192,19 @@ Please provide a helpful response as a knowledgeable local guide. Include specif
     }
     
     return recommendations.slice(0, 5);
+  }
+
+  // Add new method to detect recommendation requests
+  private isRecommendationRequest(query: string): boolean {
+    const recommendationKeywords = [
+      'recommend', 'recommendation', 'suggestion', 'suggest',
+      'nearby', 'around here', 'close by', 'in the area',
+      'what to do', 'what to see', 'places to visit', 'attractions',
+      'restaurants', 'cafes', 'shops', 'landmarks', 'points of interest',
+      'tourist', 'visit', 'explore', 'discover', 'find'
+    ];
+    
+    const queryLower = query.toLowerCase();
+    return recommendationKeywords.some(keyword => queryLower.includes(keyword));
   }
 } 
