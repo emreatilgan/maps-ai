@@ -5,7 +5,7 @@ export class MistralService {
   private mistral: Mistral;
 
   constructor() {
-    const apiKey = process.env.MISTRAL_API_KEY || '754eEXpDSLScl1F9BqcRd9wY1dsbwGXL';
+    const apiKey = process.env.MISTRAL_API_KEY;
     if (!apiKey) {
       throw new Error('MISTRAL_API_KEY environment variable is required');
     }
