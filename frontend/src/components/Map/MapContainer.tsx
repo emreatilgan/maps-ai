@@ -25,7 +25,8 @@ L.Marker.prototype.options.icon = DefaultIcon;
 interface MapContainerProps {
   userLocation: Coordinates | null;
   onLocationUpdate: (location: Coordinates) => void;
-  onPOISelect: (poi: POI) => void;
+  onPOISelect: (poi: POI | null) => void;
+  onPOIDoubleClick?: (poi: POI) => void;
   markers: POI[];
   selectedPOI: POI | null;
 }
@@ -76,9 +77,10 @@ function LocationTracker({ userLocation }: { userLocation: Coordinates | null })
 }
 
 // Component to render POI markers
-function POIMarkers({ markers, onPOISelect, selectedPOI }: {
+function POIMarkers({ markers, onPOISelect, onPOIDoubleClick, selectedPOI }: {
   markers: POI[];
-  onPOISelect: (poi: POI) => void;
+  onPOISelect: (poi: POI | null) => void;
+  onPOIDoubleClick?: (poi: POI) => void;
   selectedPOI: POI | null;
 }) {
   const getCategoryIcon = (category: string): L.Icon => {
@@ -117,6 +119,7 @@ function POIMarkers({ markers, onPOISelect, selectedPOI }: {
           icon={getCategoryIcon(poi.category)}
           eventHandlers={{
             click: () => onPOISelect(poi),
+            dblclick: () => onPOIDoubleClick?.(poi),
           }}
         >
           <Popup>
@@ -141,6 +144,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   userLocation,
   onLocationUpdate,
   onPOISelect,
+  onPOIDoubleClick,
   markers,
   selectedPOI
 }) => {
@@ -192,6 +196,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
         <POIMarkers 
           markers={markers} 
           onPOISelect={onPOISelect}
+          onPOIDoubleClick={onPOIDoubleClick}
           selectedPOI={selectedPOI}
         />
       </LeafletMapContainer>

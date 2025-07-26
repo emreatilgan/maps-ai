@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, MapPin } from 'lucide-react';
+import { Send, Loader2, MapPin, VolumeX } from 'lucide-react';
 import { Coordinates, ChatMessage, AIResponse } from '@shared/types';
 import { chatAPI } from '../../services/api';
+import { speechService } from '../../services/speech';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatInterfaceProps {
   userLocation: Coordinates | null;
@@ -21,6 +23,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onLoadingChange,
 }) => {
   const [inputText, setInputText] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -36,6 +39,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     // Focus input when component mounts
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    // Monitor speech synthesis state
+    const checkSpeakingState = () => {
+      setIsSpeaking(speechService.getIsSpeaking());
+    };
+
+    // Check initially
+    checkSpeakingState();
+
+    // Set up interval to monitor speaking state
+    const interval = setInterval(checkSpeakingState, 100);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const stopVoiceResponse = () => {
+    speechService.stopSpeaking();
+    setIsSpeaking(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +125,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }`}
         >
           <div className="text-sm">
-            {message.content}
+            {isUser ? (
+              message.content
+            ) : (
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            )}
           </div>
           
           {message.inputType && (
@@ -136,16 +163,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
       {/* Header */}
       <div className="bg-primary-600 text-white px-4 py-3">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-          <h3 className="font-semibold">AI City Guide</h3>
-          {userLocation && (
-            <div className="flex items-center text-primary-100 text-xs">
-              <MapPin className="w-3 h-3 mr-1" />
-              <span>
-                {userLocation.lat.toFixed(3)}, {userLocation.lon.toFixed(3)}
-              </span>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <h3 className="font-semibold">AI City Guide</h3>
+            {userLocation && (
+              <div className="flex items-center text-primary-100 text-xs">
+                <MapPin className="w-3 h-3 mr-1" />
+                <span>
+                  {userLocation.lat.toFixed(3)}, {userLocation.lon.toFixed(3)}
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* Stop Voice Response Button */}
+          {isSpeaking && (
+            <button
+              onClick={stopVoiceResponse}
+              className="flex items-center space-x-1 px-2 py-1 bg-red-500 hover:bg-red-600 rounded text-xs transition-colors"
+              title="Stop Voice Response"
+            >
+              <VolumeX className="w-3 h-3" />
+              <span>Stop</span>
+            </button>
           )}
         </div>
       </div>

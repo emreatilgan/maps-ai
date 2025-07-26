@@ -120,7 +120,7 @@ export class OSMService {
         case 'amenity':
           return `node["amenity"~"restaurant|cafe|bar|pub|fast_food|bank|atm|hospital|pharmacy|post_office"](around:${radius},${lat},${lon});`;
         case 'tourism':
-          return `node["tourism"~"attraction|museum|monument|viewpoint|information|hotel|hostel"](around:${radius},${lat},${lon});`;
+          return `node["tourism"~"attraction|museum|monument|viewpoint|information"](around:${radius},${lat},${lon});`;
         case 'shop':
           return `node["shop"~"supermarket|convenience|mall|department_store|clothes|books"](around:${radius},${lat},${lon});`;
         case 'leisure':

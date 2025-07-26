@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { Camera, Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Camera, Upload, X, Loader2, Image as ImageIcon, VolumeX } from 'lucide-react';
 import { Coordinates, AIResponse } from '@shared/types';
 import { chatAPI } from '../../services/api';
+import { speechService } from '../../services/speech';
 
 interface PhotoUploadProps {
   userLocation: Coordinates;
@@ -28,6 +29,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isUsingCamera, setIsUsingCamera] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -104,6 +106,26 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       setStream(null);
     }
     setIsUsingCamera(false);
+  };
+
+  // Monitor speech synthesis state
+  useEffect(() => {
+    const checkSpeakingState = () => {
+      setIsSpeaking(speechService.getIsSpeaking());
+    };
+
+    // Check initially
+    checkSpeakingState();
+
+    // Set up interval to monitor speaking state
+    const interval = setInterval(checkSpeakingState, 100);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const stopVoiceResponse = () => {
+    speechService.stopSpeaking();
+    setIsSpeaking(false);
   };
 
   const capturePhoto = () => {
@@ -184,15 +206,28 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
             <Camera className="w-5 h-5" />
             <h3 className="font-semibold">Photo Analysis</h3>
           </div>
-          <button
-            onClick={() => {
-              stopCamera();
-              onClose();
-            }}
-            className="text-purple-100 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* Stop Voice Response Button */}
+            {isSpeaking && (
+              <button
+                onClick={stopVoiceResponse}
+                className="flex items-center space-x-1 px-2 py-1 bg-red-500 hover:bg-red-600 rounded text-xs transition-colors"
+                title="Stop Voice Response"
+              >
+                <VolumeX className="w-3 h-3" />
+                <span>Stop</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                stopCamera();
+                onClose();
+              }}
+              className="text-purple-100 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 

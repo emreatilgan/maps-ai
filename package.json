@@ -28,5 +28,8 @@
     "hackathon"
   ],
   "author": "AI City Guide Team",
-  "license": "MIT"
-} 
+  "license": "MIT",
+  "dependencies": {
+    "react-markdown": "^10.1.0"
+  }
+}

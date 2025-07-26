@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import MapContainer from './components/Map/MapContainer';
 import ChatInterface from './components/ChatInterface/ChatBot';
 import VoiceInput from './components/VoiceInput/VoiceRecorder';
 import PhotoUpload from './components/PhotoUpload/CameraCapture';
 import { Coordinates, POI, ChatMessage, AIResponse } from '@shared/types';
-import { MapPin, MessageCircle, Mic, Camera, Navigation } from 'lucide-react';
+import { MapPin, MessageCircle, Mic, Camera, Navigation, VolumeX } from 'lucide-react';
+import { speechService } from './services/speech';
+import { locationAPI, chatAPI } from './services/api';
 
 function App() {
   // State management
@@ -14,28 +16,112 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeInput, setActiveInput] = useState<'text' | 'voice' | 'photo' | null>(null);
   const [mapMarkers, setMapMarkers] = useState<POI[]>([]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
+
+  // Monitor speech synthesis state
+  useEffect(() => {
+    const checkSpeakingState = () => {
+      setIsSpeaking(speechService.getIsSpeaking());
+    };
+
+    // Check initially
+    checkSpeakingState();
+
+    // Set up interval to monitor speaking state
+    const interval = setInterval(checkSpeakingState, 100);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle location updates from map
-  const handleLocationUpdate = useCallback((location: Coordinates) => {
+  const handleLocationUpdate = useCallback(async (location: Coordinates) => {
     setUserLocation(location);
+    
+    // Automatically fetch nearby attractions when location is available
+    setIsLoadingAttractions(true);
+    try {
+      const response = await locationAPI.getNearbyPOIs(
+        location.lat,
+        location.lon,
+        1000, // 1km radius
+        ['tourism', 'leisure'] // Focus on attractions
+      );
+      
+      if (response.pois && response.pois.length > 0) {
+        setMapMarkers(response.pois);
+      }
+    } catch (error) {
+      console.error('Error fetching nearby attractions:', error);
+    } finally {
+      setIsLoadingAttractions(false);
+    }
   }, []);
 
   // Handle POI selection from map
-  const handlePOISelect = useCallback((poi: POI) => {
+  const handlePOISelect = useCallback((poi: POI | null) => {
     setSelectedPOI(poi);
   }, []);
 
+  // Handle POI double-click to get AI information
+  const handlePOIDoubleClick = useCallback(async (poi: POI) => {
+    if (!userLocation) return;
+    
+    // Open the chat interface
+    setActiveInput('text');
+    
+    setIsLoading(true);
+    try {
+      const response = await chatAPI.getAttractionInfo(poi, userLocation);
+      
+      // Add the AI response to chat messages
+      const aiMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'assistant',
+        content: response.text,
+        timestamp: new Date(),
+        inputType: 'text',
+        location: userLocation,
+      };
+      
+      setChatMessages(prev => [...prev, aiMessage]);
+      
+    } catch (error) {
+      console.error('Error getting attraction info:', error);
+      // Add error message to chat
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'assistant',
+        content: 'Sorry, I couldn\'t get information about this attraction right now. Please try again.',
+        timestamp: new Date(),
+        inputType: 'text',
+        location: userLocation,
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userLocation]);
+
   // Handle chat messages and AI responses
   const handleChatResponse = useCallback((response: AIResponse, inputType: 'text' | 'voice' | 'photo') => {
-    // Update map markers if AI response includes map actions
-    if (response.mapActions?.markers) {
+  // Only update map markers if this is a text/voice query asking for recommendations
+  if (inputType === 'text' || inputType === 'voice') {
+    if (response.mapActions?.markers && response.mapActions.markers.length > 0) {
       setMapMarkers(response.mapActions.markers);
     }
+  }
 
-    // Center map if AI response includes center coordinates
-    if (response.mapActions?.center) {
-      setUserLocation(response.mapActions.center);
-    }
+  // Center map if AI response includes center coordinates
+  if (response.mapActions?.center) {
+    setUserLocation(response.mapActions.center);
+  }
+}, []);
+
+  // Stop voice response
+  const handleStopVoice = useCallback(() => {
+    speechService.stopSpeaking();
+    setIsSpeaking(false);
   }, []);
 
   // Toggle input methods
@@ -51,6 +137,7 @@ function App() {
           userLocation={userLocation}
           onLocationUpdate={handleLocationUpdate}
           onPOISelect={handlePOISelect}
+          onPOIDoubleClick={handlePOIDoubleClick}
           markers={mapMarkers}
           selectedPOI={selectedPOI}
         />
@@ -68,6 +155,12 @@ function App() {
             {userLocation && (
               <div className="text-sm text-gray-600">
                 {userLocation.lat.toFixed(4)}, {userLocation.lon.toFixed(4)}
+              </div>
+            )}
+            {isLoadingAttractions && (
+              <div className="flex items-center space-x-1 text-sm text-primary-600">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600"></div>
+                <span>Loading attractions...</span>
               </div>
             )}
           </div>
@@ -111,6 +204,17 @@ function App() {
         >
           <Camera className="w-5 h-5" />
         </button>
+
+        {/* Stop Voice Response Button */}
+        {isSpeaking && (
+          <button
+            onClick={handleStopVoice}
+            className="p-3 rounded-full shadow-lg transition-all bg-red-600 text-white hover:bg-red-700 animate-pulse"
+            title="Stop Voice Response"
+          >
+            <VolumeX className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Chat Interface */}
@@ -185,6 +289,34 @@ function App() {
               Visit Website →
             </a>
           )}
+          
+          <button
+            onClick={() => handlePOIDoubleClick(selectedPOI)}
+            className="inline-block mt-2 ml-2 text-secondary-600 hover:text-secondary-700 text-sm"
+            title="Get AI information about this attraction"
+          >
+            🤖 Ask AI →
+          </button>
+        </div>
+      )}
+
+      {/* Attractions Info Panel */}
+      {userLocation && mapMarkers.length > 0 && !isLoadingAttractions && !selectedPOI && (
+        <div className="absolute top-20 left-4 z-40 bg-white rounded-lg shadow-lg p-3 max-w-sm">
+          <div className="flex items-center space-x-2">
+            <MapPin className="w-4 h-4 text-primary-600" />
+            <div>
+              <h3 className="font-semibold text-gray-900 text-sm">
+                {mapMarkers.length} Nearby Attractions
+              </h3>
+              <p className="text-xs text-gray-600">
+                Within 1km radius
+              </p>
+              <p className="text-xs text-primary-600 mt-1">
+                💡 Double-click any attraction for AI information
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
